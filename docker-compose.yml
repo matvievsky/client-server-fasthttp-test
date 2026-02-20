@@ -1,0 +1,37 @@
+services:
+  blobgen:
+    image: alpine:3.20
+    command: ["sh", "-c", "for i in 1 2 3; do dd if=/dev/zero of=/data/blob-$$i.bin bs=1048576 count=${BLOB_SIZE_MB:-64}; done"]
+    volumes:
+      - blob-data:/data
+
+  server:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    command: ["/app/server"]
+    ports:
+      - "${SERVER_PORT_MAP:-127.0.0.1:8080:8080}"
+      - "${PPROF_PORT_MAP:-127.0.0.1:6060:6060}"
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:8080/healthz >/dev/null 2>&1 || exit 1"]
+      interval: 1s
+      timeout: 1s
+      retries: 30
+      start_period: 1s
+
+  client:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    command: ["/app/client"]
+    depends_on:
+      blobgen:
+        condition: service_completed_successfully
+      server:
+        condition: service_healthy
+    volumes:
+      - blob-data:/data
+
+volumes:
+  blob-data:
